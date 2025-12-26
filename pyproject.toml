@@ -1,0 +1,65 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "forticertman"
+version = "0.1.0"
+description = "ACME certificate manager for Fortigate firewalls"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "Thomas Dang" }
+]
+keywords = ["acme", "fortigate", "ssl", "certificate", "letsencrypt", "zerossl"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Security :: Cryptography",
+]
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "requests>=2.28",
+    "cryptography>=41.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.1",
+    "mypy>=1.0",
+    "types-requests",
+    "types-PyYAML",
+]
+
+[project.scripts]
+forticertman = "forticertman.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/litobro/forticertman"
+Repository = "https://github.com/litobro/forticertman"
+
+[tool.hatch.build.targets.wheel]
+packages = ["forticertman"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W", "UP"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true

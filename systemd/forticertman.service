@@ -1,0 +1,30 @@
+[Unit]
+Description=FortiCertMan - ACME certificate sync for Fortigate
+Documentation=https://github.com/litobro/forticertman
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/forticertman sync
+ConfigurationDirectory=forticertman
+StateDirectory=forticertman
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+
+# Allow network access for ACME and Fortigate API
+PrivateNetwork=no
+
+# Allow read access to home directory for acme.sh
+ReadWritePaths=/root/.acme.sh
+ReadWritePaths=/var/lib/forticertman
+
+[Install]
+WantedBy=multi-user.target

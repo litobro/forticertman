@@ -1,0 +1,14 @@
+[Unit]
+Description=Daily certificate renewal check for FortiCertMan
+Documentation=https://github.com/litobro/forticertman
+
+[Timer]
+# Run daily at 3:00 AM
+OnCalendar=*-*-* 03:00:00
+# Randomize start time by up to 1 hour to avoid thundering herd
+RandomizedDelaySec=3600
+# Run immediately if last run was missed (e.g., system was off)
+Persistent=true
+
+[Install]
+WantedBy=timers.target

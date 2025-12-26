@@ -1,0 +1,85 @@
+# FortiCertMan Configuration
+# Copy this file to /etc/forticertman/config.yaml and fill in your values
+
+# ACME Certificate Authority settings
+acme:
+  # Certificate authority: "zerossl" or "letsencrypt"
+  ca: zerossl
+
+  # Email for certificate notifications
+  email: admin@example.com
+
+  # ZeroSSL External Account Binding (EAB) credentials
+  # Get these from: https://app.zerossl.com/developer
+  # Required for ZeroSSL, leave empty for Let's Encrypt
+  eab_kid: "your_eab_kid_here"
+  eab_hmac_key: "your_eab_hmac_key_here"
+
+  # acme.sh installation directory (optional)
+  # acme_home: /root/.acme.sh
+
+# Cloudflare DNS API settings
+cloudflare:
+  # API Token with DNS:Edit permissions for your zones
+  # Create at: https://dash.cloudflare.com/profile/api-tokens
+  # Required permissions: Zone.DNS:Edit
+  api_token: "your_cloudflare_api_token_here"
+
+  # You can also use environment variable:
+  # api_token: "${CF_API_TOKEN}"
+
+# Fortigate firewall settings
+fortigate:
+  # Fortigate hostname or IP address
+  host: "192.168.1.1"
+
+  # HTTPS management port (default: 443)
+  port: 443
+
+  # REST API token
+  # Create at: System > Administrators > Create New > REST API Admin
+  # Required permissions:
+  #   - System > Configuration: Read/Write (for GUI cert)
+  #   - VPN: Read/Write (for certificate upload)
+  api_token: "your_fortigate_api_token_here"
+
+  # SSL certificate verification (defaults to true)
+  # Set to false if Fortigate uses a self-signed certificate
+  verify_ssl: false
+
+  # API request timeout in seconds
+  timeout: 30
+
+# Certificate definitions
+certificates:
+  # Wildcard certificate for all subdomains
+  - name: "wildcard-example-com"
+    domains:
+      - "*.example.com"
+      - "example.com"  # Include root domain in SAN
+    key_type: ec-256  # ec-256, ec-384, rsa-2048, rsa-4096
+    deploy_to:
+      # Deploy to SSL inspection profile
+      - ssl_inspection: true
+        profile: "deep-inspection"
+
+  # Individual certificate for a web application
+  - name: "webapp"
+    domains:
+      - "app.example.com"
+    key_type: ec-256
+    deploy_to:
+      # Deploy to a Virtual IP for SSL offloading
+      - vip: "webapp-vip"
+
+  # Certificate for VPN portal
+  - name: "vpn-portal"
+    domains:
+      - "vpn.example.com"
+    key_type: rsa-2048  # Some older clients need RSA
+    deploy_to:
+      - vip: "sslvpn-portal"
+
+# Global settings
+data_dir: /var/lib/forticertman
+log_level: INFO  # DEBUG, INFO, WARNING, ERROR
