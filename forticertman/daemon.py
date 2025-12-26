@@ -95,13 +95,13 @@ def run_sync(config_path: Path | str | None = None, force: bool = False) -> int:
             key_pem = cert_files.read_key()
 
             if cert_config.deploy_to:
-                fg.deploy_certificate(
+                actual_name = fg.deploy_certificate(
                     cert_config.name,
                     cert_pem,
                     key_pem,
                     cert_config.deploy_to,
                 )
-                logger.info("Deployed certificate: %s", cert_config.name)
+                logger.info("Deployed certificate: %s -> %s", cert_config.name, actual_name)
             else:
                 logger.debug(
                     "Certificate '%s' has no deployment targets, skipping",

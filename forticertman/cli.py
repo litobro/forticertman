@@ -265,19 +265,22 @@ def push(ctx: click.Context, name: str | None, push_all: bool) -> None:
 
             # Deploy to Fortigate
             if cert_config.deploy_to:
-                fg.deploy_certificate(
+                actual_name = fg.deploy_certificate(
                     cert_config.name,
                     cert_pem,
                     key_pem,
                     cert_config.deploy_to,
                 )
-                click.echo(f"  Deployed to Fortigate")
+                click.echo(f"  Deployed to Fortigate as '{actual_name}'")
             else:
                 # Just upload without binding to profiles
                 from datetime import datetime
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-                fg.upload_certificate(f"{cert_config.name}_{timestamp}", cert_pem, key_pem)
-                click.echo(f"  Uploaded to Fortigate (no deployment targets configured)")
+                result = fg.upload_certificate(f"{cert_config.name}_{timestamp}", cert_pem, key_pem)
+                if result.get("existing"):
+                    click.echo(f"  Certificate already exists on Fortigate as '{result['name']}'")
+                else:
+                    click.echo(f"  Uploaded to Fortigate as '{result['name']}' (no deployment targets configured)")
 
         except (AcmeError, FortigateError) as e:
             click.echo(f"  Error: {e}", err=True)
@@ -329,13 +332,13 @@ def sync(ctx: click.Context, force: bool) -> None:
             key_pem = cert_files.read_key()
 
             if cert_config.deploy_to:
-                fg.deploy_certificate(
+                actual_name = fg.deploy_certificate(
                     cert_config.name,
                     cert_pem,
                     key_pem,
                     cert_config.deploy_to,
                 )
-                click.echo(f"  Deployed: {cert_config.name}")
+                click.echo(f"  Deployed: {cert_config.name} -> {actual_name}")
 
         except (AcmeError, FortigateError) as e:
             errors.append(f"{cert_config.name}: {e}")

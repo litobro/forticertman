@@ -41,6 +41,7 @@ class FortigateClient:
         endpoint: str,
         data: dict[str, Any] | None = None,
         params: dict[str, str] | None = None,
+        raise_on_error: bool = True,
     ) -> dict[str, Any]:
         """Make an API request.
 
@@ -49,12 +50,13 @@ class FortigateClient:
             endpoint: API endpoint path.
             data: Request body data.
             params: Query parameters.
+            raise_on_error: If True, raise on HTTP errors. If False, return response data.
 
         Returns:
             Response JSON data.
 
         Raises:
-            FortigateError: If the request fails.
+            FortigateError: If the request fails and raise_on_error is True.
         """
         url = f"{self.base_url}{endpoint}"
         logger.debug("%s %s", method, url)
@@ -67,7 +69,8 @@ class FortigateClient:
                 params=params,
                 timeout=self.timeout,
             )
-            response.raise_for_status()
+            if raise_on_error:
+                response.raise_for_status()
             return response.json()
         except requests.exceptions.SSLError as e:
             raise FortigateError(
@@ -154,7 +157,7 @@ class FortigateClient:
             password: Optional password for encrypted key.
 
         Returns:
-            Upload result.
+            Upload result with keys: 'uploaded' (bool), 'name' (str), 'existing' (bool).
         """
         logger.info("Uploading certificate: %s", name)
 
@@ -178,10 +181,64 @@ class FortigateClient:
             "/api/v2/monitor/vpn-certificate/local/import",
             data=data,
             params={"scope": "global"},
+            raise_on_error=False,
         )
 
+        error_code = result.get("error", 0)
+
+        # Error -145 means duplicate certificate content already exists
+        if error_code == -145:
+            logger.info(
+                "Certificate content already exists on Fortigate, finding existing cert..."
+            )
+            existing_cert = self._find_certificate_by_content(cert_pem)
+            if existing_cert:
+                logger.info(
+                    "Found existing certificate with same content: %s",
+                    existing_cert["name"],
+                )
+                return {
+                    "uploaded": False,
+                    "name": existing_cert["name"],
+                    "existing": True,
+                }
+            # If we can't find it, raise the original error
+            raise FortigateError(
+                f"Certificate content duplicated but couldn't find existing cert: {result}"
+            )
+
+        if error_code != 0:
+            raise FortigateError(f"Failed to upload certificate: {result}")
+
         logger.info("Certificate uploaded successfully: %s", name)
-        return result
+        return {"uploaded": True, "name": name, "existing": False}
+
+    def _find_certificate_by_content(self, cert_pem: str) -> dict[str, Any] | None:
+        """Find an existing certificate by matching content.
+
+        Args:
+            cert_pem: Certificate PEM content to match.
+
+        Returns:
+            Certificate info dict if found, None otherwise.
+        """
+        # Parse the target certificate to get identifying info
+        target_info = parse_certificate(cert_pem)
+
+        # List all certificates and find one with matching serial/issuer
+        certs = self.list_certificates()
+        for cert in certs:
+            # Match by certificate name patterns or other identifying info
+            # The Fortigate API returns limited info, so we check what's available
+            cert_name = cert.get("name", "")
+            # Look for certificates that might match based on common naming
+            if target_info.get("common_name"):
+                cn = target_info["common_name"]
+                # Normalize wildcard CN for comparison
+                cn_normalized = cn.replace("*.", "").replace(".", "-")
+                if cn_normalized in cert_name.lower():
+                    return cert
+        return None
 
     def delete_certificate(self, name: str) -> None:
         """Delete a certificate.
@@ -279,31 +336,56 @@ class FortigateClient:
         cert_pem: str,
         key_pem: str,
         deployments: list[CertificateDeployment],
-    ) -> None:
+    ) -> str:
         """Upload certificate and apply to all deployment targets.
 
+        This method handles certificate rotation by:
+        1. Uploading with a timestamped name for version tracking
+        2. Updating deployment targets to use the new certificate
+        3. Cleaning up old certificate versions
+
+        If the certificate content already exists on the Fortigate (error -145),
+        it will reuse the existing certificate and update deployment targets.
+
         Args:
-            cert_name: Name for the certificate.
+            cert_name: Base name for the certificate.
             cert_pem: Certificate PEM content.
             key_pem: Private key PEM content.
             deployments: List of deployment targets.
+
+        Returns:
+            The actual certificate name used on the Fortigate.
         """
         # Generate a unique name with timestamp to allow rotation
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
         versioned_name = f"{cert_name}_{timestamp}"
 
-        # Upload the new certificate
-        self.upload_certificate(versioned_name, cert_pem, key_pem)
+        # Upload the new certificate (handles duplicate detection)
+        result = self.upload_certificate(versioned_name, cert_pem, key_pem)
+
+        # Get the actual name to use (might be existing cert if content matched)
+        actual_name = result["name"]
+
+        if result.get("existing"):
+            logger.info(
+                "Using existing certificate '%s' (content already on Fortigate)",
+                actual_name,
+            )
+        else:
+            logger.info("New certificate uploaded as '%s'", actual_name)
 
         # Apply to each deployment target
         for deploy in deployments:
             if deploy.ssl_inspection and deploy.profile:
-                self.update_ssl_inspection_profile(deploy.profile, versioned_name)
+                self.update_ssl_inspection_profile(deploy.profile, actual_name)
             if deploy.vip:
-                self.update_vip_certificate(deploy.vip, versioned_name)
+                self.update_vip_certificate(deploy.vip, actual_name)
 
-        # Clean up old certificates with same base name
-        self._cleanup_old_certificates(cert_name, keep=versioned_name)
+        # Clean up old certificates with same base name (if we uploaded a new one)
+        if result.get("uploaded"):
+            self._cleanup_old_certificates(cert_name, keep=actual_name)
+
+        return actual_name
 
     def _cleanup_old_certificates(self, base_name: str, keep: str) -> None:
         """Remove old versions of a certificate.
