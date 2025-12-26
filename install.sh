@@ -69,10 +69,11 @@ source "$INSTALL_DIR/venv/bin/activate"
 log_info "Installing forticertman..."
 if [[ -f "pyproject.toml" ]]; then
     # Install from local directory (development)
-    pip install -q .
+    # Use --force-reinstall to ensure updates are applied
+    pip install -q --force-reinstall .
 else
     # Install from PyPI (production)
-    pip install -q forticertman
+    pip install -q --upgrade forticertman
 fi
 
 # Create symlink to binary
