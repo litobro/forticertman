@@ -75,21 +75,42 @@ class AcmeClient:
 
         logger.info("Installing acme.sh to %s", self.acme_home)
         try:
+            # Download the installer
             result = subprocess.run(
                 ["curl", "-fsSL", ACME_SH_INSTALL_URL],
                 capture_output=True,
                 text=True,
                 check=True,
             )
-            subprocess.run(
-                ["sh", "-s", "--", "--install", "--home", str(self.acme_home)],
+
+            # Set HOME so acme.sh installs to correct location
+            # Don't pass --install --home args - they don't work with piped install
+            env = os.environ.copy()
+            env["HOME"] = str(self.acme_home.parent)
+
+            install_result = subprocess.run(
+                ["sh"],
                 input=result.stdout,
                 capture_output=True,
                 text=True,
                 check=True,
+                env=env,
             )
+
+            # Check for installer errors (script exits 0 even on failures)
+            if "Install success!" not in install_result.stdout:
+                raise AcmeError(
+                    f"acme.sh install did not complete successfully: {install_result.stdout}"
+                )
+
         except subprocess.CalledProcessError as e:
             raise AcmeError(f"Failed to install acme.sh: {e.stderr}") from e
+
+        # Verify installation
+        if not self.is_installed():
+            raise AcmeError(
+                f"acme.sh installation completed but {self._acme_sh} not found"
+            )
 
         logger.info("acme.sh installed successfully")
 
@@ -267,11 +288,8 @@ class AcmeClient:
         Returns:
             Paths to the certificate files.
         """
-        # acme.sh stores certs by primary domain
+        # acme.sh stores certs by primary domain, including the * for wildcards
         primary = cert_config.primary_domain
-        # Handle wildcard - acme.sh uses the domain without the *. prefix for directory
-        if primary.startswith("*."):
-            primary = primary[2:]
 
         cert_dir = self.acme_home / f"{primary}_ecc"
         if not cert_dir.exists():
